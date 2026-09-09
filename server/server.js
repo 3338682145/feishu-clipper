@@ -911,6 +911,114 @@ function detectedImageMime(headerValue, url, buffer) {
   return extension ? `image/${extension.replace("jpg", "jpeg")}` : "";
 }
 
+function detectedImageDimensions(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 10) return null;
+
+  if (
+    buffer.length >= 24 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  if (["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"))) {
+    const width = buffer.readUInt16LE(6);
+    const height = buffer.readUInt16LE(8);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 8 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = buffer[offset + 1];
+      offset += 2;
+      if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        continue;
+      }
+      if (offset + 2 > buffer.length) break;
+      const length = buffer.readUInt16BE(offset);
+      if (length < 2 || offset + length > buffer.length) break;
+      if (
+        [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) &&
+        length >= 7
+      ) {
+        const height = buffer.readUInt16BE(offset + 3);
+        const width = buffer.readUInt16BE(offset + 5);
+        return width > 0 && height > 0 ? { width, height } : null;
+      }
+      offset += length;
+    }
+    return null;
+  }
+
+  if (
+    buffer.length >= 30 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    const chunk = buffer.subarray(12, 16).toString("ascii");
+    if (chunk === "VP8X") {
+      return {
+        width: 1 + buffer.readUIntLE(24, 3),
+        height: 1 + buffer.readUIntLE(27, 3)
+      };
+    }
+    if (chunk === "VP8L" && buffer[20] === 0x2f) {
+      return {
+        width: 1 + buffer[21] + ((buffer[22] & 0x3f) << 8),
+        height: 1 + ((buffer[22] & 0xc0) >> 6) + (buffer[23] << 2) + ((buffer[24] & 0x0f) << 10)
+      };
+    }
+    if (
+      chunk === "VP8 " &&
+      buffer[23] === 0x9d &&
+      buffer[24] === 0x01 &&
+      buffer[25] === 0x2a
+    ) {
+      const width = buffer.readUInt16LE(26) & 0x3fff;
+      const height = buffer.readUInt16LE(28) & 0x3fff;
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+  }
+
+  return null;
+}
+
+function imageDisplayDimensions(buffer, rawWidth, rawHeight) {
+  const width = Math.round(Number(rawWidth || 0));
+  const height = Math.round(Number(rawHeight || 0));
+  if (width > 0 && height > 0) return { width, height, source: "page" };
+
+  const detected = detectedImageDimensions(buffer);
+  if (detected) {
+    if (width > 0) {
+      return {
+        width,
+        height: Math.max(1, Math.round(width * detected.height / detected.width)),
+        source: "binary"
+      };
+    }
+    if (height > 0) {
+      return {
+        width: Math.max(1, Math.round(height * detected.width / detected.height)),
+        height,
+        source: "binary"
+      };
+    }
+    return { ...detected, source: "binary" };
+  }
+
+  if (width > 0) return { width, height: Math.max(1, Math.round(width * 2 / 3)), source: "fallback" };
+  if (height > 0) return { width: Math.max(1, Math.round(height * 3 / 2)), height, source: "fallback" };
+  return { width: 1200, height: 800, source: "fallback" };
+}
+
 async function hydrateRemoteImages(blocks, sourceUrl) {
   const pending = blocks.filter((block) => block.type === "image" && !block.dataUrl);
   let nextIndex = 0;
@@ -1700,13 +1808,15 @@ function prepareEmbeddedImages(blocks) {
       if (!buffer.length || buffer.length > 8 * 1024 * 1024) return block;
       const extension = match[1].split("/")[1].replace("jpeg", "jpg");
       const placeholder = `FEISHU_CLIPPER_IMAGE_${randomUUID().replace(/-/g, "")}`;
+      const dimensions = imageDisplayDimensions(buffer, block.width, block.height);
       assets.push({
         buffer,
         fileName: `image-${String(index + 1).padStart(3, "0")}.${extension}`,
         placeholder,
         caption: normalizeBlockText(block.caption || block.alt),
-        width: Math.round(Number(block.width || 0)),
-        height: Math.round(Number(block.height || 0))
+        width: dimensions.width,
+        height: dimensions.height,
+        dimensionSource: dimensions.source
       });
       return {
         ...block,
@@ -1848,66 +1958,122 @@ function placeholderBlockId(content, placeholder) {
   return content.match(new RegExp(`<p\\s+id="([^"]+)"[^>]*>\\s*${escaped}\\s*</p>`))?.[1] || "";
 }
 
+function mediaInsertArgs(docToken, asset) {
+  const args = [
+    "docs",
+    "+media-insert",
+    "--doc",
+    docToken,
+    "--file",
+    `./${asset.fileName}`,
+    "--width",
+    String(asset.width),
+    "--height",
+    String(asset.height)
+  ];
+  if (asset.caption) args.push("--caption", asset.caption);
+  args.push("--align", "center", "--as", "user", "--format", "json");
+  return args;
+}
+
+function isFeishuAuthFailure(error) {
+  return /auth|unauthori|permission|access token|999916|999914|20029/i.test(
+    String(error?.message || error || "")
+  );
+}
+
 async function insertEmbeddedImages(docToken, assets) {
-  if (!assets.length) return;
+  if (!assets.length) return { inserted: 0, failed: [], relocated: [] };
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "feishu-clipper-"));
+  const failed = [];
+  const relocated = [];
+  let inserted = 0;
   try {
     for (const asset of assets) {
-      await writeFile(join(temporaryDirectory, asset.fileName), asset.buffer, { mode: 0o600 });
-      const mediaArgs = [
-        "docs",
-        "+media-insert",
-        "--doc",
-        docToken,
-        "--file",
-        `./${asset.fileName}`,
-        "--selection-with-ellipsis",
-        asset.placeholder,
-        "--before"
-      ];
-      if (asset.width > 0) mediaArgs.push("--width", String(asset.width));
-      if (asset.height > 0) mediaArgs.push("--height", String(asset.height));
-      if (asset.caption) mediaArgs.push("--caption", asset.caption);
-      mediaArgs.push("--align", "center");
-      mediaArgs.push("--as", "user", "--format", "json");
-      await runLark(mediaArgs, undefined, { cwd: temporaryDirectory });
+      let mediaBlockId = "";
+      try {
+        await writeFile(join(temporaryDirectory, asset.fileName), asset.buffer, { mode: 0o600 });
+        const mediaResult = await runLark(mediaInsertArgs(docToken, asset), undefined, {
+          cwd: temporaryDirectory
+        });
+        mediaBlockId = String(mediaResult?.data?.block_id || "");
+        inserted += 1;
+      } catch (error) {
+        if (isFeishuAuthFailure(error)) throw error;
+        failed.push({ fileName: asset.fileName, error: String(error?.message || error) });
+      }
 
-      const located = await runLark([
-        "docs",
-        "+fetch",
-        "--doc",
-        docToken,
-        "--scope",
-        "keyword",
-        "--keyword",
-        asset.placeholder,
-        "--detail",
-        "with-ids",
-        "--as",
-        "user",
-        "--format",
-        "json"
-      ]);
-      const blockId = placeholderBlockId(documentContentFromResult(located), asset.placeholder);
-      if (!blockId) throw new Error("插入图片后未能定位临时占位块");
-      await runLark([
-        "docs",
-        "+update",
-        "--doc",
-        docToken,
-        "--command",
-        "block_delete",
-        "--block-id",
-        blockId,
-        "--as",
-        "user",
-        "--format",
-        "json"
-      ]);
+      try {
+        const located = await runLark([
+          "docs",
+          "+fetch",
+          "--doc",
+          docToken,
+          "--scope",
+          "keyword",
+          "--keyword",
+          asset.placeholder,
+          "--detail",
+          "with-ids",
+          "--as",
+          "user",
+          "--format",
+          "json"
+        ]);
+        const blockId = placeholderBlockId(documentContentFromResult(located), asset.placeholder);
+        if (blockId) {
+          if (mediaBlockId) {
+            try {
+              await runLark([
+                "docs",
+                "+update",
+                "--doc",
+                docToken,
+                "--command",
+                "block_move_after",
+                "--block-id",
+                blockId,
+                "--src-block-ids",
+                mediaBlockId,
+                "--as",
+                "user",
+                "--format",
+                "json"
+              ]);
+            } catch (error) {
+              relocated.push({ fileName: asset.fileName, error: String(error?.message || error) });
+            }
+          }
+          await runLark([
+            "docs",
+            "+update",
+            "--doc",
+            docToken,
+            "--command",
+            "block_delete",
+            "--block-id",
+            blockId,
+            "--as",
+            "user",
+            "--format",
+            "json"
+          ]);
+        }
+      } catch (error) {
+        if (isFeishuAuthFailure(error)) throw error;
+        if (mediaBlockId) {
+          if (!relocated.some((item) => item.fileName === asset.fileName)) {
+            relocated.push({ fileName: asset.fileName, error: String(error?.message || error) });
+          }
+        } else if (!failed.some((item) => item.fileName === asset.fileName)) {
+          failed.push({ fileName: asset.fileName, error: String(error?.message || error) });
+        }
+      }
     }
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
+  return { inserted, failed, relocated };
 }
 
 async function createDoc(folderToken, title, blocks, metadata) {
@@ -1936,12 +2102,12 @@ async function createDoc(folderToken, title, blocks, metadata) {
     url: extractUrl(doc)
   };
   try {
-    await insertEmbeddedImages(normalized.token, preparedImages.assets);
-  } catch (err) {
+    const imageResult = await insertEmbeddedImages(normalized.token, preparedImages.assets);
+    return { ...normalized, imageResult };
+  } catch (error) {
     if (normalized.token) await deleteClipDoc(normalized.token).catch(() => {});
-    throw err;
+    throw error;
   }
-  return normalized;
 }
 
 function buildBaseRecordPayload(doc, title, body, metadata) {
@@ -2511,9 +2677,15 @@ async function handleClip(payload) {
     summary: metadata.summary,
     aiSource: enrichment.source,
     publishedAt: metadata.publishedDisplay,
-    warnings: remoteImages.failed
-      ? [`${remoteImages.failed} 张图片由飞书按原网址尝试获取`]
-      : []
+    warnings: [
+      ...(remoteImages.failed ? [`${remoteImages.failed} 张图片由飞书按原网址尝试获取`] : []),
+      ...(doc.imageResult?.failed?.length
+        ? [`${doc.imageResult.failed.length} 张异常图片未能上传，正文及其他图片已保存`]
+        : []),
+      ...(doc.imageResult?.relocated?.length
+        ? [`${doc.imageResult.relocated.length} 张图片已保存至文末，原位置还原失败`]
+        : [])
+    ]
   };
 }
 
@@ -2788,16 +2960,19 @@ export {
   cleanArticleBlocks,
   cleanArticleText,
   docTokenFromUrl,
+  detectedImageDimensions,
   detectedImageMime,
   evaluatePairState,
   extractRecordPage,
   getDocStates,
   hydrateRemoteImages,
   inferTags,
+  imageDisplayDimensions,
   isAllowedRequestOrigin,
   isNoiseLine,
   listDriveFolders,
   mergeTagOptions,
+  mediaInsertArgs,
   normalizeComparableUrl,
   normalizePreferences,
   normalizeAiEnrichment,

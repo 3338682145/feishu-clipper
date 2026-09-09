@@ -14,12 +14,13 @@ The extension depends on the open-source local companion included at https://git
 2. Download the companion release package from the public GitHub repository.
 3. Run the installer for macOS, Linux, or Windows as documented in `INSTALL.md`.
 4. The installer uses the official `@larksuite/cli` package and guides the reviewer through `lark-cli config init` and `lark-cli auth login --recommend`.
-5. Verify `http://127.0.0.1:8787/health` returns JSON containing `"ok":true`.
-6. Open a public article page and click the extension icon. Clipping starts immediately without another button click.
-7. The popup shows “已剪存完毕” and returns links to the created document and Base library in the reviewer's own Feishu or Lark workspace. The icon displays a green checkmark for the clipped URL.
-8. Open the extension options page. Verify that no Drive folders are shown or requested initially and that the default destination is `云盘根目录 / 飞书剪存` with Base name `网页剪存库`.
-9. Click “选择保存文件夹” to load only the Drive root's immediate child folders. Enter a folder to load only its immediate children, then optionally select it. The document and configurable Base always use the same destination folder.
-10. Clicking a previously clipped URL checks the Base only after that click and offers the existing document or an explicit “save another copy” action.
+5. Version 1.1.7 reads image dimensions locally and uses the current lark-cli append-and-reposition flow so WebP and other article images keep their document order.
+6. Verify `http://127.0.0.1:8787/health` returns JSON containing `"ok":true`.
+7. Open a public article page and click the extension icon. Clipping starts immediately without another button click.
+8. The popup shows “已剪存完毕” and returns links to the created document and Base library in the reviewer's own Feishu or Lark workspace. The icon displays a green checkmark for the clipped URL.
+9. Open the extension options page. Verify that no Drive folders are shown or requested initially and that the default destination is `云盘根目录 / 飞书剪存` with Base name `网页剪存库`.
+10. Click “选择保存文件夹” to load only the Drive root's immediate child folders. Enter a folder to load only its immediate children, then optionally select it. The document and configurable Base always use the same destination folder.
+11. Clicking a previously clipped URL checks the Base only after that click and offers the existing document or an explicit “save another copy” action.
 
 No shared test credentials are supplied because the product writes only to the current user's own workspace and the developer has no hosted account system. The official lark-cli guided setup creates or configures the required Feishu application and authorization for the reviewer.
 

@@ -1,5 +1,5 @@
 (() => {
-  const CONTENT_VERSION = "1.1.6";
+  const CONTENT_VERSION = "1.1.7";
   if (globalThis.__FEISHU_FULL_CLIPPER_LOADED__ === CONTENT_VERSION) return;
   globalThis.__FEISHU_FULL_CLIPPER_LOADED__ = CONTENT_VERSION;
 

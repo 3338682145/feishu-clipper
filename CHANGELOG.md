@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.7 - 2026-09-09
+
+- Reads PNG, JPEG, GIF, and WebP dimensions directly from image bytes before uploading.
+- Always supplies both image width and height to lark-cli, including safe fallback dimensions for malformed metadata.
+- Uses the current lark-cli append-and-reposition workflow so image placement remains compatible with lark-cli 1.0.94.
+- Isolates individual image upload failures so one exceptional image no longer rolls back the cloud document and Base record.
+- Reports degraded image saves while preserving the article body and all successfully uploaded images.
+
 ## 1.1.6 - 2026-08-12
 
 - Rejects generic summary commentary and preserves only article-grounded key points in a complete 100–200 character paragraph.

@@ -7,12 +7,15 @@ const {
   buildClipMetadata,
   buildDocXml,
   cleanArticleBlocks,
+  detectedImageDimensions,
   detectedImageMime,
   docTokenFromUrl,
   evaluatePairState,
   extractRecordPage,
   inferTags,
+  imageDisplayDimensions,
   isAllowedRequestOrigin,
+  mediaInsertArgs,
   mergeTagOptions,
   normalizeAiEnrichment,
   normalizeComparableUrl,
@@ -328,6 +331,52 @@ test("browser-captured images are staged locally for protected source sites", ()
 test("image bytes override incorrect server MIME declarations", () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
   assert.equal(detectedImageMime("image/jpeg", "https://example.gov.cn/chart.png", png), "image/png");
+});
+
+test("WebP dimensions are read from VP8X bytes and always passed to lark-cli", () => {
+  const webp = Buffer.alloc(30);
+  webp.write("RIFF", 0, "ascii");
+  webp.write("WEBP", 8, "ascii");
+  webp.write("VP8X", 12, "ascii");
+  webp.writeUIntLE(1279, 24, 3);
+  webp.writeUIntLE(719, 27, 3);
+
+  assert.deepEqual(detectedImageDimensions(webp), { width: 1280, height: 720 });
+  const prepared = prepareEmbeddedImages([
+    {
+      type: "image",
+      src: "https://example.gov.cn/image.webp",
+      dataUrl: `data:image/webp;base64,${webp.toString("base64")}`
+    }
+  ]);
+  assert.equal(prepared.assets[0].width, 1280);
+  assert.equal(prepared.assets[0].height, 720);
+  assert.equal(prepared.assets[0].dimensionSource, "binary");
+
+  const args = mediaInsertArgs("doc-token", prepared.assets[0]);
+  assert.deepEqual(args.slice(args.indexOf("--width"), args.indexOf("--height") + 2), [
+    "--width",
+    "1280",
+    "--height",
+    "720"
+  ]);
+  assert.equal(args.includes("--selection-with-ellipsis"), false);
+  assert.equal(args.includes("--before"), false);
+});
+
+test("malformed embedded images receive safe explicit fallback dimensions", () => {
+  const dimensions = imageDisplayDimensions(Buffer.from("not-a-decodable-image"), 0, 0);
+  assert.deepEqual(dimensions, { width: 1200, height: 800, source: "fallback" });
+
+  const prepared = prepareEmbeddedImages([
+    {
+      type: "image",
+      src: "https://example.gov.cn/broken.webp",
+      dataUrl: `data:image/webp;base64,${Buffer.from("not-a-decodable-image").toString("base64")}`
+    }
+  ]);
+  assert.equal(prepared.assets[0].width, 1200);
+  assert.equal(prepared.assets[0].height, 800);
 });
 
 test("image captions, code languages, formulas, and GIF data stay structured", () => {

@@ -18,6 +18,7 @@ Key features:
 • Uses local AI to rewrite a 100–200 Chinese-character summary without copying source sentences, plus 2–3 content-grounded tags of 2–5 characters each.
 • Captures article images in the browser so protected and anti-hotlink sources remain archivable.
 • Preserves images, GIFs, native image captions, HTML tables, headings, lists, quotations, code languages, and LaTeX formulas.
+• Reads PNG, JPEG, GIF, and WebP dimensions from image bytes, remains compatible with the latest official lark-cli, and prevents one exceptional image from rolling back the entire clip.
 • Centers document titles and images, indents ordinary Chinese body paragraphs by two full-width spaces, and preserves centered or right-aligned source paragraphs.
 • Removes common navigation, footer, sharing, editor, and reviewer elements using general content rules.
 • Creates or reuses the root-level Feishu Clipper folder when no destination is selected. Drive folders are not read until the user clicks Select folder; each next level is loaded only after entering its parent.
