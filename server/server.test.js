@@ -11,6 +11,11 @@ const {
   detectedImageMime,
   docTokenFromUrl,
   evaluatePairState,
+  feishuDocKind,
+  feishuDocTitleFromMarkdown,
+  feishuMarkdownImageTokens,
+  feishuMarkdownToPlainText,
+  replaceFeishuDocImages,
   extractRecordPage,
   inferTags,
   imageDisplayDimensions,
@@ -601,4 +606,38 @@ test("post-delete record readback recognizes Feishu record_not_found responses",
     recordExistsFromGet({ data: { record_id_list: ["recA"], data: [["value"]] } }, "recA"),
     true
   );
+});
+test("feishu doc urls route to the document mover only for readable doc kinds", () => {
+  assert.deepEqual(feishuDocKind("https://sample.feishu.cn/docx/DocSample1234AbcdEfgh"), {
+    kind: "docx",
+    token: "DocSample1234AbcdEfgh"
+  });
+  assert.equal(feishuDocKind("https://sample.feishu.cn/wiki/Abc123Xyz45Nop")?.kind, "wiki");
+  assert.equal(feishuDocKind("https://example.com/docx/Abc123Xyz45"), null);
+  assert.equal(feishuDocKind("https://foo.feishu.cn/sheets/Sht123Abc"), null);
+  assert.equal(feishuDocKind("not a url"), null);
+});
+
+test("feishu markdown keeps only image tokens that can be moved locally", () => {
+  const markdown = [
+    "<title>示例文档</title>",
+    "",
+    "点击 <img src=\"https://sample.feishu.cn/file/ImgSample1234AbcdeFghi\" alt=\"图1\" width=\"300\">",
+    "",
+    "![说明](https://x.feishu.cn/file/TokenTwoAbcdef)",
+    "",
+    "![外部](https://example.com/pic.png)"
+  ].join("\n");
+  assert.equal(feishuDocTitleFromMarkdown(markdown), "示例文档");
+  assert.deepEqual(feishuMarkdownImageTokens(markdown), ["ImgSample1234AbcdeFghi", "TokenTwoAbcdef"]);
+
+  const replaced = replaceFeishuDocImages(markdown, new Map([["ImgSample1234AbcdeFghi", "feishu_img_01.png"]]));
+  assert.ok(replaced.includes("![图1](@./feishu_img_01.png)"));
+  assert.ok(replaced.includes("［图片］"));
+  assert.ok(!replaced.includes("<img"));
+
+  const plain = feishuMarkdownToPlainText(replaced);
+  assert.ok(plain.includes("［图片］"));
+  assert.ok(!plain.includes("@./"));
+  assert.ok(!plain.includes("<title>"));
 });

@@ -2610,6 +2610,329 @@ function stageError(error, code, stage, hint) {
   return new ClipError(code, message, { stage, hint, cause: error });
 }
 
+// ---------------------------------------------------------------------------
+// 飞书文档搬运（把跨租户可读的 docx/wiki 链接整篇搬到「飞书剪存」文件夹）
+// ---------------------------------------------------------------------------
+
+const ZERO_WIDTH_PATTERN = /[\u200b-\u200f\u2060\ufeff\u00ad]/g;
+const FEISHU_IMAGE_PLACEHOLDER = "［图片］";
+
+function feishuDocKind(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!/^https?:\/\//i.test(value)) return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (_err) {
+    return null;
+  }
+  if (!/(?:^|\.)(?:feishu\.cn|larksuite\.com|feishu\.net)$/i.test(parsed.hostname)) return null;
+  const pathMatch = parsed.pathname.match(/^\/(docx|docs|wiki|doc)\/([A-Za-z0-9_-]{5,})/);
+  if (!pathMatch) return null;
+  return { kind: pathMatch[1], token: pathMatch[2] };
+}
+
+function feishuDocTitleFromMarkdown(markdown) {
+  const match = String(markdown || "").match(/<title>([\s\S]*?)<\/title>/i);
+  if (!match) return "";
+  return match[1]
+    .replace(/<[^>]+>/g, " ")
+    .replace(ZERO_WIDTH_PATTERN, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function feishuMarkdownImageTokens(markdown) {
+  const tokens = [];
+  const seen = new Set();
+  const text = String(markdown || "");
+  const push = (token) => {
+    if (token && !seen.has(token)) {
+      seen.add(token);
+      tokens.push(token);
+    }
+  };
+  const htmlTag = /<img\b[^>]*>/gi;
+  let match;
+  while ((match = htmlTag.exec(text))) {
+    const src = match[0].match(/src=["']([^"']+)["']/i)?.[1] || "";
+    push(src.match(/\/file\/([A-Za-z0-9_-]+)/)?.[1] || "");
+  }
+  const markdownImage = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+  while ((match = markdownImage.exec(text))) {
+    push(match[1].match(/\/file\/([A-Za-z0-9_-]+)/)?.[1] || "");
+  }
+  return tokens;
+}
+
+function replaceFeishuDocImages(markdown, files) {
+  let result = String(markdown || "");
+  result = result.replace(/<img\b[^>]*>/gi, (tag) => {
+    const src = tag.match(/src=["']([^"']+)["']/i)?.[1] || "";
+    const token = src.match(/\/file\/([A-Za-z0-9_-]+)/)?.[1] || "";
+    if (!token) return tag;
+    const fileName = files.get(token);
+    if (!fileName) return FEISHU_IMAGE_PLACEHOLDER;
+    const alt = (tag.match(/alt=["']([^"']*)["']/i)?.[1] || "").trim() || "图片";
+    return `![${alt}](@./${fileName})`;
+  });
+  result = result.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (full, alt, src) => {
+    const token = src.match(/\/file\/([A-Za-z0-9_-]+)/)?.[1] || "";
+    if (!token) return full;
+    const fileName = files.get(token);
+    if (!fileName) return FEISHU_IMAGE_PLACEHOLDER;
+    return `![${alt || "图片"}](@./${fileName})`;
+  });
+  return result;
+}
+
+function feishuMarkdownToPlainText(markdown) {
+  let text = String(markdown || "");
+  text = text.replace(/<title>[\s\S]*?<\/title>/gi, "");
+  text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, FEISHU_IMAGE_PLACEHOLDER);
+  text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+  text = text.replace(/<[^>]+>/g, "");
+  text = text.replace(/^\s{0,3}#{1,6}\s+/gm, "");
+  text = text.replace(/\*\*([^*]+)\*\*/g, "$1");
+  text = text.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1$2");
+  text = text.replace(/`([^`\n]+)`/g, "$1");
+  text = text.replace(/^\s{0,3}>\s?/gm, "");
+  text = text.replace(/^\s{0,3}[-*+]\s+/gm, "");
+  text = text.replace(/^\s{0,3}(?:-{3,}|\*{3,})\s*$/gm, "");
+  text = text.replace(ZERO_WIDTH_PATTERN, "");
+  text = text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return text;
+}
+
+function extensionForFeishuMedia(contentType) {
+  const lower = String(contentType || "").toLowerCase();
+  if (lower.includes("jpeg") || lower.includes("jpg")) return "jpg";
+  if (lower.includes("gif")) return "gif";
+  if (lower.includes("webp")) return "webp";
+  if (lower.includes("svg")) return "svg";
+  if (lower.includes("bmp")) return "bmp";
+  if (lower.includes("tiff")) return "tiff";
+  if (lower.includes("png")) return "png";
+  return "";
+}
+
+async function detectFeishuImageExtension(filePath, contentType) {
+  const known = extensionForFeishuMedia(contentType);
+  if (known) return known;
+  try {
+    const head = (await readFile(filePath)).subarray(0, 16);
+    if (head[0] === 0x89 && head[1] === 0x50) return "png";
+    if (head[0] === 0xff && head[1] === 0xd8) return "jpg";
+    const ascii = head.toString("latin1");
+    if (ascii.startsWith("GIF8")) return "gif";
+    if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "webp";
+    if (ascii.startsWith("BM")) return "bmp";
+    if (ascii.includes("<svg") || ascii.includes("<?xml")) return "svg";
+  } catch (_err) {
+    // fall through to the default extension below
+  }
+  return "png";
+}
+
+async function downloadFeishuDocImages(tokens, tempDir) {
+  const files = new Map();
+  const failed = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const baseName = `feishu_img_${String(index + 1).padStart(2, "0")}`;
+    const rawName = `${baseName}.bin`;
+    try {
+      const result = await runLark(
+        ["docs", "+media-preview", "--token", token, "--output", `./${rawName}`, "--as", "user", "--format", "json"],
+        undefined,
+        { cwd: tempDir }
+      );
+      const extension = await detectFeishuImageExtension(join(tempDir, rawName), result?.data?.content_type);
+      const finalName = `${baseName}.${extension}`;
+      await rename(join(tempDir, rawName), join(tempDir, finalName));
+      files.set(token, finalName);
+    } catch (error) {
+      failed.push({ token, error: String(error?.message || error).slice(0, 300) });
+    }
+  }
+  return { files, failed };
+}async function handleFeishuDocClip(payload) {
+  const sourceUrl = String(payload.url || "").trim();
+  let workspace;
+  try {
+    workspace = await ensureWorkspace(payload.preferences);
+  } catch (error) {
+    throw stageError(error, "WORKSPACE_UNAVAILABLE", "workspace", "请检查本机服务、飞书授权和云盘权限。");
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "feishu-doc-clip-"));
+  try {
+    let fetched;
+    try {
+      fetched = await runLark([
+        "docs",
+        "+fetch",
+        "--doc",
+        sourceUrl,
+        "--doc-format",
+        "markdown",
+        "--as",
+        "user",
+        "--format",
+        "json"
+      ]);
+    } catch (error) {
+      throw stageError(error, "SOURCE_FETCH_FAILED", "extract", "无法读取源飞书文档，请确认链接可访问且当前飞书账号有阅读权限。");
+    }
+    const markdown = String(fetched?.data?.document?.content || "");
+    if (!markdown.trim()) {
+      throw new ClipError("ARTICLE_EMPTY", "源飞书文档内容为空或无法读取", {
+        stage: "extract",
+        status: 422,
+        hint: "请确认链接指向可阅读的飞书云文档（docx/wiki），且当前飞书账号有权限。"
+      });
+    }
+
+    const title = truncate(
+      feishuDocTitleFromMarkdown(markdown) || normalizeTitle(payload) || "飞书文档搬运",
+      200
+    );
+    const imageTokens = feishuMarkdownImageTokens(markdown);
+    const { files, failed: failedImages } = await downloadFeishuDocImages(imageTokens, tempDir);
+    if (failedImages.length) {
+      console.error(`飞书文档搬运：${failedImages.length} 张图片下载失败（${failedImages.map((item) => item.token).join(",")}）`);
+    }
+
+    let contentMarkdown = replaceFeishuDocImages(markdown, files);
+    contentMarkdown = contentMarkdown.replace(/^[\s\u200b-\u200f\ufeff]*<title>[\s\S]*?<\/title>/i, "");
+    await writeFile(join(tempDir, "content.md"), contentMarkdown, "utf8");
+
+    let created;
+    try {
+      created = await runLark(
+        [
+          "docs",
+          "+create",
+          "--api-version",
+          "v2",
+          "--parent-token",
+          workspace.folder.token,
+          "--title",
+          title,
+          "--doc-format",
+          "markdown",
+          "--content",
+          "@./content.md",
+          "--as",
+          "user",
+          "--format",
+          "json"
+        ],
+        undefined,
+        { cwd: tempDir }
+      );
+    } catch (error) {
+      throw stageError(error, "DOC_WRITE_FAILED", "document", "云文档创建或图片上传失败，请稍后重试。");
+    }
+    const createdDoc =
+      findDeep(created, (item) => Boolean(item.document_id || item.url)) ||
+      created.data?.document ||
+      created.data ||
+      created;
+    const doc = {
+      token: createdDoc.document_id || extractToken(createdDoc),
+      url: extractUrl(createdDoc)
+    };const plainBody = feishuMarkdownToPlainText(contentMarkdown);
+    const enrichment = await enrichContent(
+      {
+        ...payload,
+        url: sourceUrl,
+        articleTitle: title,
+        title,
+        publisher: payload.publisher || "飞书文档",
+        description: plainBody.slice(0, 300),
+        text: plainBody
+      },
+      plainBody
+    );
+    const metadata = buildClipMetadata(
+      {
+        ...payload,
+        url: sourceUrl,
+        articleTitle: title,
+        title,
+        publisher: payload.publisher || "飞书文档",
+        publishedAt: payload.publishedAt || "",
+        description: plainBody.slice(0, 300)
+      },
+      enrichment.tags,
+      enrichment.summary
+    );
+    const isMissingOptionError = (error) => {
+      const text = String(error?.message || error);
+      return text.includes("800030005") || /option value/i.test(text);
+    };
+    let record;
+    try {
+      try {
+        await ensureTagOptions(workspace.base, metadata.tags);
+      } catch (error) {
+        throw stageError(error, "BASE_SCHEMA_FAILED", "base_schema", "请检查多维表格字段类型和编辑权限。");
+      }
+      let recordError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          record = await createRecord(workspace.base, doc, title, plainBody, metadata);
+          recordError = null;
+          break;
+        } catch (error) {
+          recordError = error;
+          if (attempt < 2 && isMissingOptionError(error)) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await ensureTagOptions(workspace.base, metadata.tags).catch(() => {});
+            continue;
+          }
+          break;
+        }
+      }
+      if (recordError) throw recordError;
+      await registerPair({
+        recordId: record.id,
+        docToken: doc.token || docTokenFromUrl(doc.url),
+        docUrl: doc.url,
+        baseToken: workspace.base.token,
+        tableId: workspace.base.tableId
+      });
+    } catch (err) {
+      if (!record?.id && doc.token) {
+        await deleteClipDoc(doc.token).catch(() => {});
+      }
+      throw stageError(err, "BASE_WRITE_FAILED", "base_record", "多维表格记录写入失败，已回滚本次云文档。");
+    }
+
+    return {
+      ok: true,
+      sourceUrl,
+      folderName: workspace.preferences.folderName,
+      folderPath: workspace.preferences.folderPath,
+      baseName: workspace.preferences.baseName,
+      docUrl: doc.url,
+      baseUrl: workspace.base.url,
+      recordId: record.id,
+      imageCount: files.size,
+      tags: metadata.tags,
+      summary: metadata.summary,
+      aiSource: enrichment.source,
+      publishedAt: metadata.publishedDisplay,
+      warnings: failedImages.length
+        ? [`${failedImages.length} 张图片下载失败，正文及其他内容已保存`]
+        : []
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function handleClip(payload) {
   if (!payload || !payload.url) {
     throw new ClipError("PAGE_UNREADABLE", "未能读取当前网页地址", {
@@ -2617,6 +2940,9 @@ async function handleClip(payload) {
       status: 400,
       hint: "请在普通 http 或 https 网页中使用扩展。"
     });
+  }
+  if (feishuDocKind(payload.url)) {
+    return handleFeishuDocClip(payload);
   }
   let workspace;
   try {
@@ -2960,6 +3286,10 @@ export {
   cleanArticleBlocks,
   cleanArticleText,
   docTokenFromUrl,
+  feishuDocKind,
+  feishuDocTitleFromMarkdown,
+  feishuMarkdownImageTokens,
+  feishuMarkdownToPlainText,
   detectedImageDimensions,
   detectedImageMime,
   evaluatePairState,
@@ -2981,5 +3311,6 @@ export {
   normalizeTitle,
   recordExistsFromGet,
   removeMenuRuns,
+  replaceFeishuDocImages,
   prepareEmbeddedImages
 };
