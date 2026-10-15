@@ -1,6 +1,7 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import path from "node:path";
+import fs from "node:fs";
 
 const localRequire = createRequire(import.meta.url);
 const dependencyRequire = process.env.STORE_ASSET_NODE_MODULES
@@ -10,9 +11,18 @@ const { chromium } = dependencyRequire("playwright");
 const sharp = dependencyRequire("sharp");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const assets = path.join(root, "store-listing", "assets");
+const browserCandidates = [
+  process.env.STORE_ASSET_BROWSER,
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+].filter(Boolean);
+const executablePath = browserCandidates.find((candidate) => fs.existsSync(candidate));
+if (!executablePath) {
+  throw new Error(`No Chromium browser found. Tried: ${browserCandidates.join(", ")}`);
+}
 const browser = await chromium.launch({
   headless: true,
-  executablePath: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+  executablePath
 });
 
 async function render({ source, output, width, height, query = "" }) {

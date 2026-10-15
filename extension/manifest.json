@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "飞书剪存pro",
+  "name": "飞书剪存",
   "version": "1.1.8",
   "description": "一键将当前网页完整保存为飞书云文档和多维表格，支持格式保真、AI整理与跨设备查重；在飞书文档页可整篇搬运到自己的飞书空间。",
   "homepage_url": "https://github.com/3338682145/feishu-clipper",
@@ -14,7 +14,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "飞书剪存pro",
+    "default_title": "飞书剪存",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

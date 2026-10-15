@@ -3171,7 +3171,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/health") {
       sendJson(req, res, 200, {
         ok: true,
-        name: "飞书剪存pro",
+        name: "飞书剪存",
         folder: FOLDER_NAME,
         base: BASE_NAME,
         ai: {
@@ -3260,7 +3260,7 @@ const server = createServer(async (req, res) => {
 
 if (process.env.FEISHU_CLIPPER_NO_LISTEN !== "1") {
   server.listen(PORT, HOST, () => {
-    console.log(`飞书剪存pro服务已启动：http://${HOST}:${PORT}`);
+    console.log(`飞书剪存服务已启动：http://${HOST}:${PORT}`);
   });
   setTimeout(() => {
     syncDeletionPairs().catch((err) => console.error("首次删除同步失败：", err.message));

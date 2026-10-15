@@ -2,7 +2,7 @@
 
 ## Name
 
-Feishu Clipper Pro
+Feishu Clipper
 
 ## Short description
 
@@ -10,7 +10,7 @@ Clip articles into Feishu documents and Base records with faithful formatting, A
 
 ## Detailed description
 
-Feishu Clipper Pro is an independent open-source tool for archiving web articles into a user's own Feishu or Lark workspace. Click the extension icon on an article page and clipping starts immediately, creating a formatted cloud document and a searchable Base record without a second button click.
+Feishu Clipper is an independent open-source tool for archiving web articles into a user's own Feishu or Lark workspace. Click the extension icon on an article page and clipping starts immediately, creating a formatted cloud document and a searchable Base record without a second button click.
 
 Key features:
 

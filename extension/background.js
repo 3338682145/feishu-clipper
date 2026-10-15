@@ -35,7 +35,7 @@ async function updateBadge(tabId, rawUrl) {
   await chrome.action.setBadgeText({ tabId, text: clipped ? "✓" : "" });
   await chrome.action.setTitle({
     tabId,
-    title: clipped ? "飞书剪存pro：此网页已剪存" : "飞书剪存pro"
+    title: clipped ? "飞书剪存：此网页已剪存" : "飞书剪存"
   });
 }
 

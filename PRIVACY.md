@@ -4,7 +4,7 @@
 
 ## 中文
 
-飞书剪存pro 的唯一目的，是在用户明确点击扩展图标后，将当前网页归档到用户自己的飞书或 Lark 空间。
+飞书剪存 的唯一目的，是在用户明确点击扩展图标后，将当前网页归档到用户自己的飞书或 Lark 空间。
 
 ### 处理的数据
 
@@ -40,7 +40,7 @@
 
 ## English
 
-Feishu Clipper Pro has one purpose: after the user explicitly clicks the extension icon, archive the current web page into the user's own Feishu or Lark workspace.
+Feishu Clipper has one purpose: after the user explicitly clicks the extension icon, archive the current web page into the user's own Feishu or Lark workspace.
 
 ### Data handled
 

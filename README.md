@@ -1,8 +1,8 @@
-# 飞书剪存pro
+# 飞书剪存
 
 将当前网页一键保存为排版后的飞书云文档，并同步建立可检索的飞书多维表格记录；也可在飞书云文档页面一键把整篇文档搬运到自己的飞书空间。
 
-![飞书剪存pro](store-listing/assets/promo-large-1400x560.png)
+![飞书剪存](store-listing/assets/promo-large-1400x560.png)
 
 > 本项目是独立开源工具，并非飞书或 Lark 官方产品。飞书和 Lark 是其各自权利人的商标。
 
@@ -27,15 +27,15 @@
 
 点击扩展图标后立即开始剪存：
 
-![飞书剪存pro 准备剪存网页](store-listing/assets/screenshot-clip-1280x800.png)
+![飞书剪存 准备剪存网页](store-listing/assets/screenshot-clip-1280x800.png)
 
 剪存完成后可直接打开飞书云文档和网页剪存库：
 
-![飞书剪存pro 剪存完成](store-listing/assets/screenshot-success-1280x800.png)
+![飞书剪存 剪存完成](store-listing/assets/screenshot-success-1280x800.png)
 
 设置页默认不读取云盘；点击“选择保存文件夹”后才按层显示现有文件夹。多维表格名称可以修改，并与剪存云文档保存在同一位置：
 
-![飞书剪存pro 保存位置设置](store-listing/assets/screenshot-settings-1280x800.png)
+![飞书剪存 保存位置设置](store-listing/assets/screenshot-settings-1280x800.png)
 
 ## 安装要求
 
@@ -55,7 +55,7 @@
 ## 使用方法
 
 1. 打开要保存的文章页面。
-2. 点击浏览器工具栏中的“飞书剪存pro”。
+2. 点击浏览器工具栏中的“飞书剪存”。
 3. 扩展立即执行剪存，无需再次点击按钮。
 4. 出现“已剪存完毕”后，可打开飞书云文档或网页剪存库；该网址再次打开时，扩展图标会显示对号。
 5. 在飞书云文档页面同样点击扩展图标，即可整篇搬运到自己的飞书空间，并建立多维表格记录。
