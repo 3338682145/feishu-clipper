@@ -4,11 +4,11 @@ Use these answers in the Chrome Web Store Privacy and Microsoft Edge Partner Cen
 
 ## Single purpose
 
-Archive the current web article, after an explicit user click, into the user's own Feishu or Lark cloud document and Base library.
+Archive the current web article or Feishu cloud document page, after an explicit user click, into the user's own Feishu or Lark cloud document and Base library.
 
 ## Data categories handled
 
-- Website content: yes. Article title, URL, text, image data, table structure, publication date, publisher, generated summary, and tags are required for the clipping feature.
+- Website content: yes. Article title, URL, text, image data, table structure, publication date, publisher, generated summary, and tags are required for the clipping feature. When the active page is a Feishu cloud document, its text and images are read to recreate the document in the user's own workspace as requested by the user.
 - Web history: yes, limited to normalized URLs and timestamps for pages the user explicitly clips. This data remains only in browser-local extension storage to display the clipped checkmark; after a user click, the current URL is also compared with the user's own Base library for duplicate detection. The extension does not read the browser history database or transmit the list to the developer.
 - Authentication information: no. Authentication is handled separately by the official lark-cli on the user's device. The folder picker uses that current user authorization and never reads Feishu desktop client credentials.
 - Personally identifiable information: not intentionally collected. If the selected page contains such information, it is processed only as part of the user-requested clipping operation.

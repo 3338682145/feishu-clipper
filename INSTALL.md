@@ -16,8 +16,8 @@ npm --version
 从 GitHub Releases 下载源码包并解压，或使用 Git：
 
 ```bash
-git clone https://github.com/lproc2006/feishu-clipper-pro.git
-cd feishu-clipper-pro
+git clone https://github.com/3338682145/feishu-clipper.git
+cd feishu-clipper
 ```
 
 ## 3. 安装本机服务并授权飞书

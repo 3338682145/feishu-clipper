@@ -6,7 +6,7 @@ Feishu Clipper Pro
 
 ## Short description
 
-Clip articles into Feishu documents and Base records with faithful formatting, AI organization, and duplicate checks. Requires the open-source local companion.
+Clip articles into Feishu documents and Base records with faithful formatting, AI organization, and duplicate checks; also migrates a whole Feishu cloud document into your own workspace in one click. Requires the open-source local companion.
 
 ## Detailed description
 
@@ -25,6 +25,7 @@ Key features:
 • Uses “Web Clip Library” as the default editable Base name and always keeps the Base in the same folder as clipped documents.
 • Keeps the document and Base record consistent, including title, date, publisher, tags, URL, and body.
 • Links each document to its Base record so a confirmed deletion on one side can remove the matching item.
+• On a Feishu cloud document page, one click migrates the entire document (body, images, and layout) into the user's own workspace with the same Base record as a regular clip.
 • Shows a green checkmark for locally known pages and checks the Base library after a click to find duplicates across browsers and devices.
 • Distinguishes page access, extraction, local service, authorization, document, image, and Base write failures.
 • Contains no advertising, behavioral analytics, tracking SDK, or developer-operated content relay server.

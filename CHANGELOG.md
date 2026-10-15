@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.8 - 2026-10-15
+
+- Clips Feishu cloud document pages: clicking the extension icon on a Feishu document page the user can open migrates the whole document, including body content and images, into the user's own Feishu or Lark workspace as a new cloud document with a matching Base record.
+- Downloads every source image through the document media preview, re-uploads it into the migrated document, and converts the document Markdown into the clipper's content format (local image references and image placeholders).
+- Retries the Base record briefly when a newly registered tag option has not propagated yet; undoes the migrated document if the record ultimately cannot be written.
+
 ## 1.1.7 - 2026-09-09
 
 - Reads PNG, JPEG, GIF, and WebP dimensions directly from image bytes before uploading.
