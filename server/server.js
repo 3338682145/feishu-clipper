@@ -868,6 +868,51 @@ function safeHttpUrl(value) {
   }
 }
 
+const RICH_SEGMENT_LIMIT = 60;
+const RICH_LINK_LIMIT = 50;
+
+// 网页剪存内联链接：把扩展采集到的富文本段还原成可点击文本
+function normalizeRichSegments(source) {
+  const segments = [];
+  for (const entry of Array.isArray(source) ? source : []) {
+    if (!entry || typeof entry !== "object") continue;
+    const text = String(entry.text || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/ {2,}/g, " ");
+    if (!text) continue;
+    const link = entry.link ? safeHttpUrl(entry.link) : "";
+    const last = segments[segments.length - 1];
+    if (last && last.link === link) {
+      last.text += text;
+      continue;
+    }
+    segments.push(link ? { text, link } : { text });
+    if (segments.length >= RICH_SEGMENT_LIMIT) break;
+  }
+  if (segments.length) {
+    segments[0].text = segments[0].text.replace(/^\s+/, "");
+    const tail = segments[segments.length - 1];
+    tail.text = tail.text.replace(/\s+$/, "");
+  }
+  return segments.filter((segment) => segment.text);
+}
+
+function inlineTextXml(block) {
+  const segments = normalizeRichSegments(block.rich);
+  if (segments.filter((segment) => segment.link).length > RICH_LINK_LIMIT) return escapeXml(block.text);
+  if (!segments.some((segment) => segment.link)) return escapeXml(block.text);
+  return segments
+    .map((segment) => {
+      const text = escapeXml(segment.text);
+      if (!text) return "";
+      return segment.link
+        ? `<a href="${escapeXmlAttribute(segment.link)}">${text}</a>`
+        : text;
+    })
+    .join("");
+}
+
 const TRACKING_PARAMETERS = new Set(["fbclid", "gclid", "mc_cid", "mc_eid", "spm"]);
 
 function normalizeComparableUrl(value) {
@@ -1209,9 +1254,11 @@ function cleanArticleBlocks(payload, title = normalizeTitle(payload)) {
 
     const text = normalizeBlockText(source.text);
     if (!text || isNoiseLine(text)) continue;
+    const rich = normalizeRichSegments(source.rich);
     normalized.push({
       type,
       text,
+      ...(rich.some((segment) => segment.link) ? { rich } : {}),
       level: Math.min(6, Math.max(1, Number(source.level || 2))),
       ordered: Boolean(source.ordered),
       language: String(source.language || "").toLowerCase().replace(/[^a-z0-9+#.-]/g, "").slice(0, 24),
@@ -1895,7 +1942,7 @@ function buildDocXml(title, blocks, metadata = {}) {
     if (!list.length) return;
     const tag = listOrdered ? "ol" : "ul";
     const items = list
-      .map((block) => `<li${listOrdered ? ' seq="auto"' : ""}>${escapeXml(block.text)}</li>`)
+      .map((block) => `<li${listOrdered ? ' seq="auto"' : ""}>${inlineTextXml(block)}</li>`)
       .join("");
     content.push(`<${tag}>${items}</${tag}>`);
     list = [];
@@ -1925,22 +1972,22 @@ function buildDocXml(title, blocks, metadata = {}) {
     } else if (block.type === "heading") {
       const level = Math.min(4, Math.max(2, block.level || 2));
       const alignment = block.align && block.align !== "left" ? ` align="${block.align}"` : "";
-      content.push(`<h${level}${alignment}>${escapeXml(block.text)}</h${level}>`);
+      content.push(`<h${level}${alignment}>${inlineTextXml(block)}</h${level}>`);
     } else if (block.type === "quote") {
-      content.push(`<blockquote>${escapeXml(block.text)}</blockquote>`);
+      content.push(`<blockquote>${inlineTextXml(block)}</blockquote>`);
     } else if (block.type === "code") {
       const language = block.language ? ` lang="${escapeXmlAttribute(block.language)}"` : "";
       content.push(`<pre${language}><code>${escapeXml(block.text)}</code></pre>`);
     } else if (block.type === "formula") {
       content.push(`<p align="center"><latex>${escapeXml(block.text)}</latex></p>`);
     } else if (block.type === "caption") {
-      content.push(`<p align="center"><em>${escapeXml(block.text)}</em></p>`);
+      content.push(`<p align="center"><em>${inlineTextXml(block)}</em></p>`);
     } else {
       const aligned = block.align === "center" || block.align === "right";
       content.push(
         aligned
-          ? `<p align="${block.align}">${escapeXml(block.text)}</p>`
-          : `<p>${BODY_PARAGRAPH_INDENT}${escapeXml(block.text)}</p>`
+          ? `<p align="${block.align}">${inlineTextXml(block)}</p>`
+          : `<p>${BODY_PARAGRAPH_INDENT}${inlineTextXml(block)}</p>`
       );
     }
   }

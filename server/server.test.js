@@ -641,3 +641,64 @@ test("feishu markdown keeps only image tokens that can be moved locally", () => 
   assert.ok(!plain.includes("@./"));
   assert.ok(!plain.includes("<title>"));
 });
+
+test("网页剪存的内联链接被保留并渲染成超链接", () => {
+  const payload = {
+    url: "https://example.com/policy",
+    title: "示例页面",
+    blocks: [
+      {
+        type: "paragraph",
+        text: "依据 第289号法律 的要求，详见 官方说明 。",
+        rich: [
+          { text: "依据 " },
+          { text: "第289号法律", link: "https://docs.cntd.ru/document/1313577797" },
+          { text: " 的要求，详见 " },
+          { text: "官方说明", link: "https://example.com/guide" },
+          { text: " 。" }
+        ]
+      },
+      {
+        type: "list_item",
+        ordered: false,
+        text: "以下类别无需提供质量文件 45 KB",
+        rich: [{ text: "以下类别无需提供质量文件 45 KB", link: "javascript:alert(1)" }]
+      },
+      {
+        type: "paragraph",
+        text: "没有富文本段的段落",
+        rich: [{ text: " " }]
+      }
+    ]
+  };
+  const blocks = cleanArticleBlocks(payload, "示例页面");
+  const richBlocks = blocks.filter((block) => Array.isArray(block.rich));
+  assert.equal(richBlocks.length, 1, "只有带合法链接的块保留富文本段");
+
+  const xml = buildDocXml("示例页面", blocks);
+  assert.ok(xml.includes('<a href="https://docs.cntd.ru/document/1313577797">第289号法律</a>'));
+  assert.ok(xml.includes('<a href="https://example.com/guide">官方说明</a>'));
+  assert.ok(!xml.includes("javascript:"), "非 http(s) 链接必须被丢弃");
+  assert.ok(xml.includes("没有富文本段的段落"), "无链接的块退回纯文本渲染");
+  assert.ok(xml.includes("以下类别无需提供质量文件 45 KB"), "被丢弃链接的文本仍保留");
+});
+
+test("附件文件段的链接保留在列表项里", () => {
+  const blocks = [
+    { type: "heading", level: 3, text: "附件文件" },
+    {
+      type: "list_item",
+      ordered: false,
+      text: "以下类别无需提供质量文件45 KB",
+      rich: [
+        {
+          text: "以下类别无需提供质量文件45 KB",
+          link: "https://cdn1.example.com/kms-files/kategorii.xlsx"
+        }
+      ]
+    }
+  ];
+  const xml = buildDocXml("附件测试", blocks);
+  assert.match(xml, /<li><a href="https:\/\/cdn1\.example\.com\/kms-files\/kategorii\.xlsx">以下类别无需提供质量文件45 KB<\/a><\/li>/);
+  assert.ok(xml.includes("<h3>附件文件</h3>"));
+});

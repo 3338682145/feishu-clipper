@@ -1,5 +1,5 @@
 (() => {
-  const CONTENT_VERSION = "1.1.8";
+  const CONTENT_VERSION = "1.1.9";
   if (globalThis.__FEISHU_FULL_CLIPPER_LOADED__ === CONTENT_VERSION) return;
   globalThis.__FEISHU_FULL_CLIPPER_LOADED__ = CONTENT_VERSION;
 
@@ -43,6 +43,46 @@
     } catch (_err) {
       return "";
     }
+  }
+
+  const INLINE_SKIP_SELECTOR = "script,style,noscript,svg,button,form,select,textarea,img,video,audio,iframe,canvas";
+
+  // 按顺序采集块内文本段；<a> 保留链接，页内锚点链接视为纯文本
+  function inlineSegments(element) {
+    const segments = [];
+    const push = (value, link) => {
+      const text = String(value || "").replace(/\u00a0/g, " ");
+      if (!text) return;
+      const last = segments[segments.length - 1];
+      if (last && last.link === link) {
+        last.text += text;
+        return;
+      }
+      segments.push(link ? { text, link } : { text });
+    };
+    const pageBase = location.href.split("#")[0];
+    const walk = (node, inheritedLink) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          push(child.nodeValue, inheritedLink);
+          continue;
+        }
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        const childTag = child.tagName.toLowerCase();
+        if (INLINE_SKIP_SELECTOR.split(",").includes(childTag)) continue;
+        let link = inheritedLink;
+        if (childTag === "a") {
+          const href = resolveUrl(child.getAttribute("href"));
+          const samePage = Boolean(href) && href.split("#")[0] === pageBase;
+          link = href && !samePage ? href : inheritedLink;
+        }
+        walk(child, link);
+      }
+    };
+    walk(element, "");
+    return segments
+      .map((segment) => ({ ...segment, text: segment.text.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ") }))
+      .filter((segment) => segment.text);
   }
 
   function largestSrcsetCandidate(srcset) {
@@ -980,6 +1020,11 @@
         linkDensity: blockLinkDensity(element),
         align: ["left", "center", "right"].includes(rawAlignment) ? rawAlignment : ""
       };
+      if (tag !== "pre") {
+        const richSegments = inlineSegments(element);
+        const richLinks = richSegments.filter((segment) => segment.link);
+        if (richLinks.length > 0 && richLinks.length <= 50) block.rich = richSegments;
+      }
       if (/^h[1-6]$/.test(tag)) {
         block.type = "heading";
         block.level = Number(tag.slice(1));
@@ -1007,6 +1052,56 @@
     if (!block.text) return false;
     if (isSeparator(block.text)) return true;
     return block.text.length <= 36 && Number(block.linkDensity || 0) >= 0.58;
+  }
+
+  const FILE_LINK_PATTERN =
+    /\.(pdf|xlsx?|xlsm|xlsb|docx?|pptx?|pptm|pages|zip|rar|7z|tar|gz|csv|tsv|txt|rtf|odt|ods|odp|epub|dwg|dxf|mp4|mp3)(?:[?#]|$)/i;
+
+  function fileLinkHref(anchor) {
+    const raw = anchor.getAttribute("href");
+    if (!raw || /^(#|javascript:|mailto:|tel:)/i.test(raw.trim())) return "";
+    const href = resolveUrl(raw);
+    if (!href) return "";
+    if (FILE_LINK_PATTERN.test(href) || anchor.hasAttribute("download")) return href;
+    return "";
+  }
+
+  // 正文里指向文件（附件/下载卡片）的链接常被 Readability 整段丢掉，这里单独兜底收集。
+  function appendFileAttachments(blocks) {
+    const known = new Set();
+    for (const block of blocks) {
+      for (const segment of Array.isArray(block.rich) ? block.rich : []) {
+        if (segment.link) known.add(segment.link);
+      }
+      if (block.type === "image" && block.src) known.add(block.src);
+    }
+    const seen = new Set();
+    const found = [];
+    for (const anchor of document.querySelectorAll("a[href]")) {
+      if (anchor.closest("nav, header, footer, aside")) continue;
+      const href = fileLinkHref(anchor);
+      if (!href || known.has(href) || seen.has(href)) continue;
+      seen.add(href);
+      const fallbackName = decodeURIComponent((href.split(/[?#]/)[0].split("/").pop() || "").slice(0, 200));
+      const label =
+        normalizeText(anchor.textContent) ||
+        normalizeText(anchor.getAttribute("download")) ||
+        normalizeText(fallbackName) ||
+        href;
+      found.push({ label: label.slice(0, 120), href });
+      if (found.length >= 30) break;
+    }
+    if (!found.length) return blocks;
+    blocks.push({ type: "heading", level: 3, text: "附件文件" });
+    for (const item of found) {
+      blocks.push({
+        type: "list_item",
+        ordered: false,
+        text: item.label,
+        rich: [{ text: item.label, link: item.href }]
+      });
+    }
+    return blocks;
   }
 
   function removeNavigationRuns(blocks) {
@@ -1130,6 +1225,7 @@
     const publishedAt = readPublishedAt(title, article);
     const publisher = readPublisher(title);
     const blocks = extractBlocks(articleRoot);
+    appendFileAttachments(blocks);
     const imageCapture = await attachImageData(blocks);
     const text = blocks
       .filter((block) => block.text && block.type !== "caption")

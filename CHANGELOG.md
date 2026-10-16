@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.9 - 2026-10-16
+
+- Keeps in-text hyperlinks from web pages: links inside headings, paragraphs, list items, quotes, and captions are stored with their absolute URL and written into the saved Feishu document as clickable text instead of being flattened to plain text.
+- Adds an `附件文件` section that collects file attachments (`.pdf`, `.xlsx`, `.docx`, archives, and other downloadable extensions, plus `download`-attributed links) found on the page, so attachments dropped by the article extractor are still captured as clickable links.
+- Ignores non-navigable links (`#`, `javascript:`, `mailto:`, `tel:`) and caps captured inline links per block to keep documents clean.
+
 ## 1.1.8 - 2026-10-15
 
 - Clips Feishu cloud document pages: clicking the extension icon on a Feishu document page the user can open migrates the whole document, including body content and images, into the user's own Feishu or Lark workspace as a new cloud document with a matching Base record.
