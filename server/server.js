@@ -2673,7 +2673,8 @@ function feishuDocKind(rawUrl) {
   } catch (_err) {
     return null;
   }
-  if (!/(?:^|\.)(?:feishu\.cn|larksuite\.com|feishu\.net)$/i.test(parsed.hostname)) return null;
+  // 飞书/Lark 官方文档域名：feishu.cn（中国）、larksuite.com（国际）、larkoffice.com（Lark 企业版，如 bytedance.larkoffice.com）
+  if (!/(?:^|\.)(?:feishu\.cn|feishu\.net|larksuite\.com|larkoffice\.(?:com|cn))$/i.test(parsed.hostname)) return null;
   const pathMatch = parsed.pathname.match(/^\/(docx|docs|wiki|doc)\/([A-Za-z0-9_-]{5,})/);
   if (!pathMatch) return null;
   return { kind: pathMatch[1], token: pathMatch[2] };

@@ -702,3 +702,16 @@ test("附件文件段的链接保留在列表项里", () => {
   assert.match(xml, /<li><a href="https:\/\/cdn1\.example\.com\/kms-files\/kategorii\.xlsx">以下类别无需提供质量文件45 KB<\/a><\/li>/);
   assert.ok(xml.includes("<h3>附件文件</h3>"));
 });
+
+test("Lark 企业版域名（larkoffice.com）的文档与 wiki 链接被识别", () => {
+  assert.deepEqual(feishuDocKind("https://bytedance.larkoffice.com/wiki/LBIUwvXZDiuplXkVAL2cJR8vnwd"), {
+    kind: "wiki",
+    token: "LBIUwvXZDiuplXkVAL2cJR8vnwd"
+  });
+  assert.deepEqual(feishuDocKind("https://bytedance.larkoffice.com/docx/ABCdef123456"), {
+    kind: "docx",
+    token: "ABCdef123456"
+  });
+  assert.equal(feishuDocKind("https://evil-larkoffice.com/wiki/ABCdef123456"), null);
+  assert.equal(feishuDocKind("https://larkoffice.com.evil.com/docx/ABCdef123456"), null);
+});

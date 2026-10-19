@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.10 - 2026-10-19
+
+- Recognizes Lark enterprise documents on `larkoffice.com` / `larkoffice.cn` (for example `bytedance.larkoffice.com/wiki/...`), not only `feishu.cn`, `larksuite.com`, and `feishu.net`. These links previously fell through to web-article extraction and failed with "no readable content"; they are now migrated whole, like any other readable Feishu document.
+- Adds a regression test asserting that look-alike hosts (`evil-larkoffice.com`, `larkoffice.com.evil.com`) are still rejected.
+
 ## 1.1.9 - 2026-10-16
 
 - Keeps in-text hyperlinks from web pages: links inside headings, paragraphs, list items, quotes, and captions are stored with their absolute URL and written into the saved Feishu document as clickable text instead of being flattened to plain text.
